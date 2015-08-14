@@ -1,5 +1,5 @@
 === Step by Step Social Count Cache ===
-Contributors: oxy
+Contributors: oxynotes
 Donate link: https://wordpress.org/plugins/step-by-step-social-count-cache/
 Tags: cache, count, sns, social
 Requires at least: 4.2.4
@@ -8,8 +8,7 @@ Stable tag: 1.0
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
-Step by Step Social Count Cache はSNSのカウントをキャッシュするプラグインです。
-投稿の最終更新日から「1日」「1週間」「それ以降」の3つの段階で、キャッシュの有効期限を設定することができます。
+SNSのカウントを3段階に分けてキャッシュするプラグインです。
 
 == Description ==
 
