@@ -8,34 +8,34 @@ Stable tag: 1.0
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
-Step by Step Social Count Cache ��SNS�̃J�E���g���L���b�V������v���O�C���ł��B
-���e�̍ŏI�X�V������u1���v�u1�T�ԁv�u����ȍ~�v��3�̒i�K�ŁA�L���b�V���̗L��������ݒ肷�邱�Ƃ��ł��܂��B
+Step by Step Social Count Cache はSNSのカウントをキャッシュするプラグインです。
+投稿の最終更新日から「1日」「1週間」「それ以降」の3つの段階で、キャッシュの有効期限を設定することができます。
 
 == Description ==
 
-Step by Step Social Count Cache��SNS�̃J�E���g���L���b�V������v���O�C���ł��B
-���e�̍ŏI�X�V������u1���v�u1���`1�T�ԁv�u1�T�Ԉȍ~�v��3�̒i�K�ŁA�L���b�V���̗L��������ݒ肷�邱�Ƃ��ł��܂��B
+Step by Step Social Count CacheはSNSのカウントをキャッシュするプラグインです。
+投稿の最終更新日から「1日」「1日～1週間」「1週間以降」の3つの段階で、キャッシュの有効期限を設定することができます。
 
-Facebook�̂����˂��擾�����API�̃o�[�W����2.4�𗘗p���邽�߃I�v�V�����y�[�W��App Token�̓��͂��K�v�ł��B
+Facebookのいいねを取得する際APIのバージョン2.4を利用するためオプションページでApp Tokenの入力が必要です。
 
-�J�E���g���擾�ł���SNS��twitter�AFacebook�AGoogle+�A�͂Ăȃu�b�N�}�[�N�APocket�Afeedly��6�ł��B
+カウントを取得できるSNSはtwitter、Facebook、Google+、はてなブックマーク、Pocket、feedlyの6つです。
 
-�f�t�H���g�̗L�������́u1���ȓ��v�̏ꍇ��30���B
-�u1���`7���ȓ��v�̏ꍇ��1���B
-�u7���ȍ~�v�̏ꍇ��1�T�ԂƂȂ��Ă��܂��B
-���ꂼ��̗L�������̓I�v�V�����y�[�W�ŕύX���\�ł��B
+デフォルトの有効期限は「1日以内」の場合は30分。
+「1日～7日以内」の場合は1日。
+「7日以降」の場合は1週間となっています。
+それぞれの有効期限はオプションページで変更が可能です。
 
-�g������Usage�ɂ���ʂ�Asbs_get_all()�Ƃ����^�O��\�����������e�̃��[�v���ɋL�q���܂��B�J�E���g�͔z��ɂȂ��Ă���̂ŁA�K�v��SNS�̓Y���������ďo�͂��Ă��������B
+使い方はUsageにある通り、sbs_get_all()というタグを表示したい投稿のループ内に記述します。カウントは配列になっているので、必要なSNSの添字を加えて出力してください。
 
-��������sbs_get_twitter()�ȂǁA�ʂ̃J�E���g���擾����^�O���p�ӂ��Ă��܂��B
+もしくはsbs_get_twitter()など、個別のカウントを取得するタグも用意しています。
 
-= �g���� =
+= 使い方 =
 
-1. �Ǘ���ʂ���u�ݒ� �� SBS Social Count Cache�v��I�����܂��B
-1. Facebook��App Token�A�J�E���g���L���b�V������SNS�ASNS�̃J�E���g���L���b�V��������Ԃ����ꂼ��ݒ肵�Ă��������B
-1. �e���v���[�g�t�@�C���̃��[�v���ňȉ��̂悤�ɋL�q���Ă��������B
+1. 管理画面から「設定 ＞ SBS Social Count Cache」を選択します。
+1. FacebookのApp Token、カウントをキャッシュするSNS、SNSのカウントをキャッシュする期間をそれぞれ設定してください。
+1. テンプレートファイルのループ内で以下のように記述してください。
 
-**���e�̃L���b�V����S�Ď擾���ď����o�����@**
+**投稿のキャッシュを全て取得して書き出す方法**
 
 `<?php
 $socal_count = sbs_get_all();
@@ -47,7 +47,7 @@ echo $socal_count["pocket"];
 echo $socal_count["feedly"];
 ?>`
 
-**�������͌ʂɎ擾���ď����o�����@**
+**もしくは個別に取得して書き出す方法**
 
 `<?php
 echo sbs_get_twitter();
@@ -60,11 +60,11 @@ echo sbs_get_feedly();
 
 == Installation ==
 
-1. �v���O�C���̐V�K�ǉ��{�^�����N���b�N���āA�������ɁuSBS Social Count Cache�v�Ɠ��͂��āu�������C���X�g�[���v���N���b�N���܂��B
-1. �������̓_�E�����[�h���ĉ𓀂����t�H���_��`/wp-content/plugins/`�f�B���N�g���ɕۑ����܂��B
-1. �ݒ��ʂ̃v���O�C���� **SBS Social Count Cache** ��L���ɂ��Ă��������B
-1. �Ǘ���ʂ���u�ݒ� �� SBS Social Count Cache�v��I�����܂��B
-1. Facebook��App Token�A�J�E���g���L���b�V������SNS�ASNS�̃J�E���g���L���b�V��������Ԃ����ꂼ��ݒ肵�Ă��������B
+1. プラグインの新規追加ボタンをクリックして、検索窓に「SBS Social Count Cache」と入力して「今すぐインストール」をクリックします。
+1. もしくはダウンロードして解凍したフォルダを`/wp-content/plugins/`ディレクトリに保存します。
+1. 設定画面のプラグインで **SBS Social Count Cache** を有効にしてください。
+1. 管理画面から「設定 ＞ SBS Social Count Cache」を選択します。
+1. FacebookのApp Token、カウントをキャッシュするSNS、SNSのカウントをキャッシュする期間をそれぞれ設定してください。
 
 == Frequently asked questions ==
 
@@ -77,7 +77,7 @@ echo sbs_get_feedly();
 == Changelog ==
 
 1.0
-���߂̃o�[�W�����B
+初めのバージョン。
 
 == Upgrade notice ==
 
