@@ -55,6 +55,30 @@ if( empty( $this->sbs_facebook_app_token ) ) { // FacebookのApp Tokenが設定�
 	</tbody>
 </table>
 
+<hr>
+
+<h3><?php _e('FeedlyでカウントするRSSフィードの種類', 'sbs_social_count_cache'); ?></h3>
+
+<table class="form-table">
+	<tbody>
+	<tr>
+		<th><label><?php _e('RSSフィードの種類', 'sbs_social_count_cache'); ?></label></th>
+		<td>
+		<fieldset>
+			<label>
+				<input name="sbs_active_sns[rss_type]" type="radio" id="RSS" value="RSS" <?php if( $this->sbs_active_sns['rss_type'] == "RSS" ){ echo 'checked="checked"'; } ?>>RSS</input>
+			</label><br>
+			<label>
+				<input name="sbs_active_sns[rss_type]" type="radio" id="RSS" value="RSS2" <?php if( $this->sbs_active_sns['rss_type'] == "RSS2" ){ echo 'checked="checked"'; } ?>>RSS2</input>
+			</label><br>
+			<label>
+				<input name="sbs_active_sns[rss_type]" type="radio" id="RSS" value="Atom" <?php if( $this->sbs_active_sns['rss_type'] == "Atom" ){ echo 'checked="checked"'; } ?>>Atom</input>
+			</label>
+		</fieldset>
+		</td>
+		</tr>
+	</tbody>
+</table>
 
 <hr>
 

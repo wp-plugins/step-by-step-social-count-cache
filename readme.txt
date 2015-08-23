@@ -3,8 +3,8 @@ Contributors: oxynotes
 Donate link: https://wordpress.org/plugins/step-by-step-social-count-cache/
 Tags: cache, count, sns, social
 Requires at least: 4.2.4
-Tested up to: 4.2.4
-Stable tag: 1.0
+Tested up to: 4.3
+Stable tag: 1.1
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -16,13 +16,20 @@ Step by Step Social Count CacheはSNSのカウントをキャッシュするプ�
 
 投稿の最終更新日から「**1日**」「**1日～1週間**」「**1週間以降**」の3つの段階で、キャッシュの有効期限を設定することができます。
 
+カウントを取得できるSNSは**twitter**、**Facebook**、**Google+**、**はてなブックマーク**、**Pocket**、**feedly**の6つです。
+
+デフォルトの有効期限は「**1日以内**」の場合は**30分**。
+「**1日～7日以内**」の場合は**1日**。
+「**7日以降**」の場合は**1週間**となっています。
+それぞれの有効期限はオプションページで変更が可能です。
+
 = 使い方 =
 
 1. 管理画面から「**設定 ＞ SBS Social Count Cache**」を選択します。
 1. **FacebookのApp Token**、**カウントをキャッシュするSNS**、**SNSのカウントをキャッシュする期間** をそれぞれ設定してください。
 1. テンプレートファイルのループ内で以下のように記述してください。
 
-**投稿のキャッシュを全て取得して書き出す方法**
+**投稿のキャッシュを全て取得して書き出す方法（こちらがおすすめ）**
 
 `<?php
 	$socal_count = sbs_get_all();
@@ -48,16 +55,7 @@ Step by Step Social Count CacheはSNSのカウントをキャッシュするプ�
 
 Facebookのいいねを取得する際に、Facebook API 2.4を利用するためApp Tokenの入力が必要です。
 
-カウントを取得できるSNSは**twitter**、**Facebook**、**Google+**、**はてなブックマーク**、**Pocket**、**feedly**の6つです。
-
-デフォルトの有効期限は「**1日以内**」の場合は**30分**。
-「**1日～7日以内**」の場合は**1日**。
-「**7日以降**」の場合は**1週間**となっています。
-それぞれの有効期限はオプションページで変更が可能です。
-
-使い方はUsageにある通り **sbs_get_all()** というタグを表示したい投稿のループ内に記述します。カウントは配列になっているので、必要なSNSの添字を加えて出力してください。
-
-もしくは **sbs_get_twitter()** といった、個別のカウントを取得するタグも用意しています。
+feedlyでカウントするフィードは、RSS、RSS2、Atomから選択することができます。
 
 
 == Installation ==
@@ -76,8 +74,12 @@ Facebookのいいねを取得する際に、Facebook API 2.4を利用するた�
 
 == Changelog ==
 
+1.1
+feedlyでカウントするフィードを選択可能に変更。APCもしくはAPCuが有効な場合、クエリをメモリ上に展開。他、バグ修正。
+
 1.0
 初めのバージョン。
+
 
 == Upgrade notice ==
 

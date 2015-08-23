@@ -3,8 +3,8 @@
 Plugin Name: SBS Social Count Cache
 Plugin URI: https://wordpress.org/plugins/step-by-step-social-count-cache/
 Description: ソーシャルブックマークのカウントをキャッシュするプラグイン
-Version: 1.0
-Author: Oxy
+Version: 1.1
+Author: oxynotes
 Author URI: http://oxynotes.com
 License: GPL2
 
@@ -47,7 +47,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  * echo $socal_count["feedly"];
  * ?>
  * 
- * **もしくは個別に取得して書き出す方法**
+ * もしくは個別に取得して書き出す方法
  * 
  * <?php
  * echo sbs_get_twitter();
@@ -81,7 +81,6 @@ if ( !defined('ABSPATH') ) {exit();}
  */
 register_activation_hook( __FILE__, array( 'SBS_SocialCountCache', 'activate' ) );
 register_deactivation_hook( __FILE__, array( 'SBS_SocialCountCache', 'deactivate' ) );
-
 
 
 
@@ -275,7 +274,8 @@ class SBS_SocialCountCache {
 				'google' => 1,
 				'hatena' => 1,
 				'pocket' => 1,
-				'feedly' => 1
+				'feedly' => 1,
+				'rss_type' => 'RSS2'
 			);
 
 			// 設定のデフォルトの値
@@ -324,6 +324,7 @@ class SBS_SocialCountCache {
 		delete_option('sbs_facebook_app_token');
 		delete_option('sbs_active_sns');
 		delete_option('sbs_cache_time');
+		delete_option('sbs_delete_apc_cache');
 	}
 
 
@@ -369,11 +370,13 @@ class SBS_SocialCountCache {
 	 * admin_initはオプション画面が読み込まれる前に実行される
 	 * register_settingの第一引数はオプションページのスラッグ
 	 * 第2引数は各オプションのnameと一致させる
+	 * delete_apc_cacheという項目は無いがオプションページを更新時のコールバック関数として記述。
 	 */
 	public function register_mysettings() {
 		register_setting( 'sbs-social-count-cache', 'sbs_facebook_app_token', array( $this, 'token_validation' ) );
 		register_setting( 'sbs-social-count-cache', 'sbs_active_sns', array( $this, 'active_sns_validation' ) );
 		register_setting( 'sbs-social-count-cache', 'sbs_cache_time', array( $this, 'cache_time_validation' ) );
+		register_setting( 'sbs-social-count-cache', 'sbs_delete_apc_cache', array( $this, 'delete_apc_cache' ) );
 	}
 
 
@@ -410,15 +413,55 @@ class SBS_SocialCountCache {
 
 
 	/**
+	 * このプラグインで作成したAPCのキャッシュを削除する関数
+	 * APCuだとinfoがkeyに変更されているため、APCのみにあるtypeで条件分岐
+	 */
+	function delete_apc_cache() {
+		//すべてのユーザキャッシュを取得する
+		if ( function_exists( 'apc_store' ) ) { // apcが有効かどうか調べる
+			$userCache = apc_cache_info('user');
+			$sbs_apc_key = "sbs_db_cache_" . md5( __FILE__ ); // md5で一意性確保（作成時と合わせるべし）
+
+			if ( isset( $userCache["type"] ) ){ // APCの場合
+
+				foreach($userCache['cache_list'] as $key => $cacheList){
+					//  キーに$this->sbs_apc_keyが含まれているキャッシュを削除する
+					if( strpos( $cacheList['info'], $sbs_apc_key ) !== false ){
+						apc_delete( $cacheList['info'] );
+					}
+				}
+
+			} else { // APCuの場合
+
+				foreach($userCache['cache_list'] as $key => $cacheList){
+					//  キーに$this->sbs_apc_keyが含まれているキャッシュを削除する
+					if( strpos( $cacheList['key'], $sbs_apc_key ) !== false ){
+						apc_delete( $cacheList['key'] );
+					}
+				}
+			}
+		}
+	}
+
+
+
+
+	/**
 	 * SNSのオンオフ用のバリデーション関数
+	 * 後にRSSフィードの種類も追加
 	 * intval()で数値に変換。誤った値が入ると0になる
 	 *
-	 * @param	int		1か0
+	 * @param	int		1か0、もしくはRSS,RSS2,Atom
 	 */
 	function active_sns_validation( $input ) {
 
 		foreach( $input as $key => $val ){
-			$input[$key] = intval( $input[$key] );
+
+			if( $input[$key] == 'RSS' || $input[$key] == 'RSS2' || $input[$key] == 'Atom' ){
+				$input[$key] = $input[$key];
+			} else {
+				$input[$key] = intval( $input[$key] );
+			}
 		}
 
 		return $input;
@@ -626,9 +669,17 @@ class SBS_SocialCountCache {
 	 * @return	int		返り値はカウント
 	 */
 	public function get_feedly(){
-		$feed_url = rawurlencode( get_bloginfo( 'rss2_url' ) );
-		$result = wp_remote_get( 'http://cloud.feedly.com/v3/feeds/feed%2F' . $feed_url );
 
+		// 設定したRSSフィードの種類を指定
+		if ( $this->sbs_active_sns['rss_type'] == 'RSS' ) {
+			$feed_url = rawurlencode( get_bloginfo( 'rss_url' ) );
+		} elseif( $this->sbs_active_sns['rss_type'] == 'RSS2' ) {
+			$feed_url = rawurlencode( get_bloginfo( 'rss2_url' ) );
+		} else {
+			$feed_url = rawurlencode( get_bloginfo( 'atom_url' ) );
+		}
+
+		$result = wp_remote_get( 'http://cloud.feedly.com/v3/feeds/feed%2F' . $feed_url );
 		$array = json_decode( $result["body"], true );
 
 		if ( !is_wp_error( $result ) && $result["response"]["code"] === 200 ) {
@@ -683,25 +734,25 @@ function sbs_get_socal_count( $active_sns = null ) {
 	$sbs_active_sns = $sbs->sbs_active_sns;
 	$sbs_cache_time = $sbs->sbs_cache_time;
 
+
 	// 投稿のIDとURLを取得する
 	$postid = get_the_ID();
 	$url = get_permalink( $postid );
 
+
 /*
 	// test用
-	$postid = 55;
+	$postid = 105;
 	$url = "http://oxynotes.com/?p=2933";
 */
 
-	// 対応する投稿IDのキャッシュを取得する
-	$table_name = $wpdb->prefix . "socal_count_cache";
-	$query = "SELECT day,twitter_count,facebook_count,google_count,hatena_count,pocket_count,feedly_count FROM {$table_name} WHERE postid = {$postid}";
-	$result = $wpdb->get_row($query);
 
-	// 投稿の最終更新日時をUNIX timeで取得
+
+
+	// 設定ページで指定したキャッシュの有効期限を算出する（UNIX time）
 
 	/*
-	WordPressではdateやstrtotimeの使用は設定によってはずれるので推奨されず、
+	WordPressではdateやstrtotimeの使用は設定によってずれるので推奨されず、
 	代わりにcurrent_timeやget_date_from_gmtの使用が推奨されている。
 	また投稿の最終更新日を取得するにはget_the_modified_timeを使う。
 
@@ -714,28 +765,55 @@ function sbs_get_socal_count( $active_sns = null ) {
 	そしてCodexの当該タグのページにも解説なし。
 	*/
 
-	$pfx_date = get_the_modified_time('U'); 
-	$current_time = current_time('timestamp'); // これも+9時間されるちょっと意味わからん
+	$pfx_date = get_the_modified_time('U'); // 投稿の最終更新日時取得
+	$current_time = current_time('timestamp'); // ブログのローカルタイム取得 これも+9時間されるちょっと意味わからん
 	$day = $current_time - (1 * 24 * 60 * 60); // ブログのローカルタイムから1日前のUNIXタイムを取得
 	$week = $day - (6 * 24 * 60 * 60); // 1週間
 
+
+
+
 	// 最終更新日が1日以内、1週間以内、それ以上の場合で振り分け、現時点での有効期限を算出
 	if ( $pfx_date > $day ) { // 最終更新日が1日以内の場合
-
 		$exp_time = $sbs->exp_time($current_time, $sbs_cache_time['1day']['day'], $sbs_cache_time['1day']['hour'], $sbs_cache_time['1day']['minute']);
 		// var_dump("最終更新日が1日以内"); // テスト用
-
 	} elseif( $pfx_date > $week ) { // 1週間以内
-
 		$exp_time = $sbs->exp_time($current_time, $sbs_cache_time['1week']['day'], $sbs_cache_time['1week']['hour'], $sbs_cache_time['1week']['minute']);
 		// var_dump("最終更新日が1週間以内"); // テスト用
-
 	} else { // それ以上
-
 		$exp_time = $sbs->exp_time($current_time, $sbs_cache_time['after']['day'], $sbs_cache_time['after']['hour'], $sbs_cache_time['after']['minute']);
 		// var_dump("最終更新日が1週間以上"); // テスト用
-
 	}
+
+	// 対応する投稿IDのキャッシュをデータベースから取得する
+	// acpが有効な場合はapcにデータを保存して再利用する
+	$table_name = $wpdb->prefix . "socal_count_cache";
+
+	if ( function_exists( 'apc_store' ) ) { // apcが有効かどうか調べる
+		$sbs_apc_key = "sbs_db_cache_" . md5( __FILE__ ); // md5で一意性確保
+		// var_dump("apc有効");
+		if ( apc_fetch( $sbs_apc_key . $postid ) ) { // キャッシュがある場合
+			$result = apc_fetch( $sbs_apc_key . $postid );
+			// var_dump("apcキャッシュ見つかった");
+		} else { // キャッシュがない場合（データベースのキャッシュを取得）
+			$query = "SELECT day,twitter_count,facebook_count,google_count,hatena_count,pocket_count,feedly_count FROM {$table_name} WHERE postid = {$postid}";
+			$result = $wpdb->get_row($query);
+			apc_store( $sbs_apc_key . $postid, $result, strtotime($result->day) - $exp_time); // APCの有効期限は、キャッシュ作成日-有効期限で算出。期限切れの場合はマイナスになるがAPCでは問題ないようだ
+			// var_dump("apcキャッシュ見つからない");
+		}
+	} else {
+		$query = "SELECT day,twitter_count,facebook_count,google_count,hatena_count,pocket_count,feedly_count FROM {$table_name} WHERE postid = {$postid}";
+		$result = $wpdb->get_row($query);
+		// var_dump("apc無効");
+	}
+
+
+
+
+	// var_dump("投稿の最終更新日時取得" . date("Y-m-d H:i:s",$pfx_date) . "<br>");
+	// var_dump("ブログのローカルタイム取得" . date("Y-m-d H:i:s",$current_time) . "<br>");
+	// var_dump("有効期限" . date("Y-m-d H:i:s",$exp_time) . "<br>");
+	// var_dump("キャッシュの取得時間" . date("Y-m-d H:i:s",strtotime($result->day)) . "<br>");
 
 	// キャッシュの取得日時が有効期限内の場合
 	if ( strtotime($result->day) > $exp_time ) {
@@ -748,7 +826,7 @@ function sbs_get_socal_count( $active_sns = null ) {
 		if ( $active_sns == "all") {
 			$socials = array();
 
-			if( !empty( $sbs_active_sns['twitter'] ) ) {
+			if( !empty( $sbs_active_sns['twitter'] ) ) { // !付きemptyなので0の場合もfalse
 				$socials['twitter'] = $result->twitter_count;
 			} else {
 				$socials['twitter'] = 0;
@@ -785,39 +863,39 @@ function sbs_get_socal_count( $active_sns = null ) {
 			}
 		} elseif ( $active_sns == 'twitter' ) {
 			if( !empty( $sbs_active_sns['twitter'] ) ) {
-				$socials['twitter'] = $result->twitter_count;
+				$socials = $result->twitter_count;
 			} else {
-				$socials['twitter'] = 0;
+				$socials = 0;
 			}
 		} elseif ( $active_sns == 'facebook' ) {
 			if( !empty( $sbs_active_sns['facebook'] ) ) {
-				$socials['facebook'] = $result->facebook_count;
+				$socials = $result->facebook_count;
 			} else {
-				$socials['facebook'] = 0;
+				$socials = 0;
 			}
 		} elseif ( $active_sns == 'google' ) {
 			if( !empty( $sbs_active_sns['google'] ) ) {
-				$socials['google'] = $result->google_count;
+				$socials = $result->google_count;
 			} else {
-				$socials['google'] = 0;
+				$socials = 0;
 			}
 		} elseif ( $active_sns == 'hatena' ) {
 			if( !empty( $sbs_active_sns['hatena'] ) ) {
-				$socials['hatena'] = $result->hatena_count;
+				$socials = $result->hatena_count;
 			} else {
-				$socials['hatena'] = 0;
+				$socials = 0;
 			}
 		} elseif ( $active_sns == 'pocket' ) {
 			if( !empty( $sbs_active_sns['pocket'] ) ) {
-				$socials['pocket'] = $result->pocket_count;
+				$socials = $result->pocket_count;
 			} else {
-				$socials['pocket'] = 0;
+				$socials = 0;
 			}
 		} elseif ( $active_sns == 'feedly' ) {
-			if( !empty( $sbs_active_sns['facebook'] ) ) {
-				$socials['facebook'] = $result->facebook_count;
+			if( !empty( $sbs_active_sns['feedly'] ) ) {
+				$socials = $result->feedly_count;
 			} else {
-				$socials['facebook'] = 0;
+				$socials = 0;
 			}
 		}
 
@@ -921,12 +999,17 @@ function sbs_get_socal_count( $active_sns = null ) {
 }
 
 
+
+
 /**
  * Template tag - sbs_get_socal_count()を使って全てのカウントを返す
  */
 function sbs_get_all() {
 	return sbs_get_socal_count( 'all' );
 }
+
+
+
 
 /**
  * Template tag - sbs_get_socal_count()を使ってtwitterのカウントを返す
@@ -935,12 +1018,18 @@ function sbs_get_twitter() {
 	return sbs_get_socal_count( 'twitter' );
 }
 
+
+
+
 /**
  * Template tag - sbs_get_socal_count()を使ってfacebookのカウントを返す
  */
 function sbs_get_facebook() {
 	return sbs_get_socal_count( 'facebook' );
 }
+
+
+
 
 /**
  * Template tag - sbs_get_socal_count()を使ってgoogleのカウントを返す
@@ -949,6 +1038,9 @@ function sbs_get_google() {
 	return sbs_get_socal_count( 'google' );
 }
 
+
+
+
 /**
  * Template tag - sbs_get_socal_count()を使ってhatenaのカウントを返す
  */
@@ -956,12 +1048,17 @@ function sbs_get_hatena() {
 	return sbs_get_socal_count( 'hatena' );
 }
 
+
+
+
 /**
  * Template tag - sbs_get_socal_count()を使ってpocketのカウントを返す
  */
 function sbs_get_pocket() {
 	return sbs_get_socal_count( 'pocket' );
 }
+
+
 
 
 /**
