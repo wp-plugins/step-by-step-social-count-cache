@@ -701,7 +701,7 @@ class SBS_SocialCountCache {
 
 } // if class
 
-http://rapidgator.net/file/2289bc043c6d4d0ced9fd5e253a200c8/peepfox_1871_su1535_00-avx69.com.wmv.html
+
 
 
 // インスタンスの作成（コンストラクタの実行）
