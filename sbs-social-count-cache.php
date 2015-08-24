@@ -306,7 +306,7 @@ class SBS_SocialCountCache {
 
 
 	/**
-	 * プラグイン削除時の処理
+	 * プラグイン削除（停止）時の処理
 	 * 
 	 * 追加したテーブルと、オプションテーブルのカラムを削除
 	 */
@@ -325,6 +325,10 @@ class SBS_SocialCountCache {
 		delete_option('sbs_active_sns');
 		delete_option('sbs_cache_time');
 		delete_option('sbs_delete_apc_cache');
+
+		// APCキャッシュの削除
+		$this->delete_apc_cache();
+
 	}
 
 
