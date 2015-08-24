@@ -3,7 +3,7 @@
 Plugin Name: SBS Social Count Cache
 Plugin URI: https://wordpress.org/plugins/step-by-step-social-count-cache/
 Description: ソーシャルブックマークのカウントをキャッシュするプラグイン
-Version: 1.1
+Version: 1.1.1
 Author: oxynotes
 Author URI: http://oxynotes.com
 License: GPL2
@@ -418,7 +418,7 @@ class SBS_SocialCountCache {
 	 */
 	function delete_apc_cache() {
 		//すべてのユーザキャッシュを取得する
-		if ( function_exists( 'apc_store' ) ) { // apcが有効かどうか調べる
+		if ( function_exists( 'apc_store' ) && ini_get( 'apc.enabled' ) ) { // apcモジュール読み込まれており、更に有効かどうか調べる
 			$userCache = apc_cache_info('user');
 			$sbs_apc_key = "sbs_db_cache_" . md5( __FILE__ ); // md5で一意性確保（作成時と合わせるべし）
 
@@ -789,7 +789,7 @@ function sbs_get_socal_count( $active_sns = null ) {
 	// acpが有効な場合はapcにデータを保存して再利用する
 	$table_name = $wpdb->prefix . "socal_count_cache";
 
-	if ( function_exists( 'apc_store' ) ) { // apcが有効かどうか調べる
+	if ( function_exists( 'apc_store' ) && ini_get( 'apc.enabled' ) ) { // apcモジュール読み込まれており、更に有効かどうか調べる
 		$sbs_apc_key = "sbs_db_cache_" . md5( __FILE__ ); // md5で一意性確保
 		// var_dump("apc有効");
 		if ( apc_fetch( $sbs_apc_key . $postid ) ) { // キャッシュがある場合
