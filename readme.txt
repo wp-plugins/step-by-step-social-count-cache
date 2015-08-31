@@ -31,6 +31,7 @@ Step by Step Social Count CacheはSNSのカウントをキャッシュするプ�
 
 `<?php
 	$socal_count = sbs_get_all();
+	echo $socal_count["all"];
 	echo $socal_count["twitter"];
 	echo $socal_count["facebook"];
 	echo $socal_count["google"];
