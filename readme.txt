@@ -54,14 +54,14 @@ Step by Step Social Count CacheはSNSのカウントをキャッシュするプ�
 
 SNSのカウントが多い順に投稿を表示する際に利用してください。
 
-<?php
+`<?php
 	sbs_get_pp_all( $page, $post_type );
 	sbs_get_pp_twitter( $page, $post_type );
 	sbs_get_pp_facebook( $page, $post_type );
 	sbs_get_pp_google( $page, $post_type );
 	sbs_get_pp_hatena( $page, $post_type );
 	sbs_get_pp_pocket( $page, $post_type );
-?>
+?>`
 
 Facebookのいいねを取得する際に、Facebook API 2.4を利用するためApp Tokenの入力が必要です。
 
