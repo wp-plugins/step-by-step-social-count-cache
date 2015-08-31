@@ -4,7 +4,7 @@ Donate link: https://wordpress.org/plugins/step-by-step-social-count-cache/
 Tags: cache, count, sns, social
 Requires at least: 4.2.4
 Tested up to: 4.3
-Stable tag: 1.1
+Stable tag: 1.2
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -23,11 +23,9 @@ Step by Step Social Count CacheはSNSのカウントをキャッシュするプ�
 「**7日以降**」の場合は**1週間**となっています。
 それぞれの有効期限はオプションページで変更が可能です。
 
-= 使い方 =
+詳しい使い方や解説は[作者の解説ページ](http://oxynotes.com/?p=9200)をご覧ください。
 
-1. 管理画面から「**設定 ＞ SBS Social Count Cache**」を選択します。
-1. **FacebookのApp Token**、**カウントをキャッシュするSNS**、**SNSのカウントをキャッシュする期間** をそれぞれ設定してください。
-1. テンプレートファイルのループ内で以下のように記述してください。
+= カウントを表示する方法 =
 
 **投稿のキャッシュを全て取得して書き出す方法（こちらがおすすめ）**
 
@@ -52,10 +50,24 @@ Step by Step Social Count CacheはSNSのカウントをキャッシュするプ�
 	echo sbs_get_feedly();
 ?>`
 
+= カウントの多い投稿のIDを取得する方法 =
+
+SNSのカウントが多い順に投稿を表示する際に利用してください。
+
+<?php
+	sbs_get_pp_all( $page, $post_type );
+	sbs_get_pp_twitter( $page, $post_type );
+	sbs_get_pp_facebook( $page, $post_type );
+	sbs_get_pp_google( $page, $post_type );
+	sbs_get_pp_hatena( $page, $post_type );
+	sbs_get_pp_pocket( $page, $post_type );
+?>
 
 Facebookのいいねを取得する際に、Facebook API 2.4を利用するためApp Tokenの入力が必要です。
 
-feedlyでカウントするフィードは、RSS、RSS2、Atomから選択することができます。
+feedlyでカウントするフィードはRSS2です。カスタムのFeedを使用したい場合は設定画面で指定することができます。
+
+設定画面でキャッシュのプリロードが可能です。
 
 
 == Installation ==
@@ -73,6 +85,9 @@ feedlyでカウントするフィードは、RSS、RSS2、Atomから選択する
 1. Option page.
 
 == Changelog ==
+
+1.2
+カスタムのRSSを入力できるように変更。プリロード機能を追加。カウントの多い順に投稿のIDを取得できるように変更。
 
 1.1.1
 APCモジュールが無効になっている場合のバグを修正。

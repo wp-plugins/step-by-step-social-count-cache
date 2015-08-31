@@ -3,7 +3,7 @@
 Plugin Name: SBS Social Count Cache
 Plugin URI: https://wordpress.org/plugins/step-by-step-social-count-cache/
 Description: ソーシャルブックマークのカウントをキャッシュするプラグイン
-Version: 1.1.1
+Version: 1.2
 Author: oxynotes
 Author URI: http://oxynotes.com
 License: GPL2
@@ -28,42 +28,13 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 
 
-/*
- * 正式名称「Step by Step Social Count Cache」
- * 
- * 1.各種SNSのカウント数を取得し、キャッシュをMySQLに保存する
- * 1.設定画面で設定したキャッシュの有効期限の間はデータベースにキャッシュされたカウントを返す
- * 1.キャッシュの有効期間は投稿の更新から「1日以内」「1日～1週間まで」「それ以降」の3段階
- *   投稿日からでなく、更新日からの点に注意
- * 
- * テンプレートのループ内で以下のように記述する。
- * <?php
- * $socal_count = sbs_get_all();
- * echo $socal_count["twitter"];
- * echo $socal_count["facebook"];
- * echo $socal_count["google"];
- * echo $socal_count["hatena"];
- * echo $socal_count["pocket"];
- * echo $socal_count["feedly"];
- * ?>
- * 
- * もしくは個別に取得して書き出す方法
- * 
- * <?php
- * echo sbs_get_twitter();
- * echo sbs_get_facebook();
- * echo sbs_get_google();
- * echo sbs_get_hatena();
- * echo sbs_get_pocket();
- * echo sbs_get_feedly();
- * ?>
- */
-
-
-
-
 // インストールパスのディレクトリが定義されているか調べる（プラグインのテンプレ）
-if ( !defined('ABSPATH') ) {exit();}
+if ( !defined('ABSPATH') ) { exit(); }
+
+
+
+
+require_once dirname(__FILE__) . '/lib/sbs_cron.php';
 
 
 
@@ -96,7 +67,7 @@ class SBS_SocialCountCache {
 	public $sbs_user_settings = "";
 
 	// テーブルアップデート用テーブルバージョンの指定
-	public static $sbs_db_version = "1.0";
+	public static $sbs_db_version = "1.1";
 
 
 
@@ -119,6 +90,8 @@ class SBS_SocialCountCache {
 
 		add_action( 'admin_menu', array( $this, 'add_plugin_admin_menu' ) );
 		add_action( 'admin_init', array( $this, 'register_mysettings' ) );
+
+		$SBS_Cron = new SBS_Cron();
 
 	}
 
@@ -147,6 +120,10 @@ class SBS_SocialCountCache {
 
 		// データベースとオプションを削除する
 		self::uninstall();
+
+		// プリロードのcronを削除
+		$SBS_Cron = new SBS_Cron();
+		$SBS_Cron->stop_cron();
 
 	}
 
@@ -179,6 +156,7 @@ class SBS_SocialCountCache {
 			CREATE TABLE {$table_name} (
 				postid bigint(20) NOT NULL,
 				day datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+				all_count bigint(20) DEFAULT 0,
 				twitter_count bigint(20) DEFAULT 0,
 				facebook_count bigint(20) DEFAULT 0,
 				google_count bigint(20) DEFAULT 0,
@@ -234,6 +212,7 @@ class SBS_SocialCountCache {
 				CREATE TABLE {$table_name} (
 					postid bigint(20) NOT NULL,
 					day datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+					all_count bigint(20) DEFAULT 0,
 					twitter_count bigint(20) DEFAULT 0,
 					facebook_count bigint(20) DEFAULT 0,
 					google_count bigint(20) DEFAULT 0,
@@ -275,7 +254,7 @@ class SBS_SocialCountCache {
 				'hatena' => 1,
 				'pocket' => 1,
 				'feedly' => 1,
-				'rss_type' => 'RSS2'
+				'rss_type' => ''
 			);
 
 			// 設定のデフォルトの値
@@ -306,7 +285,7 @@ class SBS_SocialCountCache {
 
 
 	/**
-	 * プラグイン削除（停止）時の処理
+	 * プラグイン削除時の処理
 	 * 
 	 * 追加したテーブルと、オプションテーブルのカラムを削除
 	 */
@@ -314,7 +293,6 @@ class SBS_SocialCountCache {
 
 	    global $wpdb;
 
-		// 接頭辞の追加
 		$table_name = $wpdb->prefix . 'socal_count_cache';
 
 		// 有効にした時点でテーブルが無いことはありえないが一応IF EXISTSを追加
@@ -324,10 +302,11 @@ class SBS_SocialCountCache {
 		delete_option('sbs_facebook_app_token');
 		delete_option('sbs_active_sns');
 		delete_option('sbs_cache_time');
+		delete_option('sbs_preload');
 		delete_option('sbs_delete_apc_cache');
 
 		// APCキャッシュの削除
-		$this->delete_apc_cache();
+		self::delete_apc_cache();
 
 	}
 
@@ -375,11 +354,13 @@ class SBS_SocialCountCache {
 	 * register_settingの第一引数はオプションページのスラッグ
 	 * 第2引数は各オプションのnameと一致させる
 	 * delete_apc_cacheという項目は無いがオプションページを更新時のコールバック関数として記述。
+	 * 複数配列で入力する場合、バリデーション時Keyがnameの配列、valが入力値
 	 */
 	public function register_mysettings() {
 		register_setting( 'sbs-social-count-cache', 'sbs_facebook_app_token', array( $this, 'token_validation' ) );
 		register_setting( 'sbs-social-count-cache', 'sbs_active_sns', array( $this, 'active_sns_validation' ) );
 		register_setting( 'sbs-social-count-cache', 'sbs_cache_time', array( $this, 'cache_time_validation' ) );
+		register_setting( 'sbs-social-count-cache', 'sbs_preload', array( $this, 'preload_cron' ) );
 		register_setting( 'sbs-social-count-cache', 'sbs_delete_apc_cache', array( $this, 'delete_apc_cache' ) );
 	}
 
@@ -417,6 +398,23 @@ class SBS_SocialCountCache {
 
 
 	/**
+	 * 設定でプリロードにチェックが入っている場合に実行
+	 *
+	 * @param	int		0 or 1
+	 */
+	function preload_cron( $input ){	
+		if ( ! empty( $input ) ){
+
+			$SBS_Cron = new SBS_Cron();
+			$SBS_Cron->start_cron();
+		}
+		return $input;
+	}
+
+
+
+
+	/**
 	 * このプラグインで作成したAPCのキャッシュを削除する関数
 	 * APCuだとinfoがkeyに変更されているため、APCのみにあるtypeで条件分岐
 	 */
@@ -426,17 +424,14 @@ class SBS_SocialCountCache {
 			$userCache = apc_cache_info('user');
 			$sbs_apc_key = "sbs_db_cache_" . md5( __FILE__ ); // md5で一意性確保（作成時と合わせるべし）
 
-			if ( isset( $userCache["type"] ) ){ // APCの場合
-
+			if ( isset( $userCache['cache_list'][0]["type"] ) ){ // APCの場合
 				foreach($userCache['cache_list'] as $key => $cacheList){
 					//  キーに$this->sbs_apc_keyが含まれているキャッシュを削除する
 					if( strpos( $cacheList['info'], $sbs_apc_key ) !== false ){
 						apc_delete( $cacheList['info'] );
 					}
 				}
-
 			} else { // APCuの場合
-
 				foreach($userCache['cache_list'] as $key => $cacheList){
 					//  キーに$this->sbs_apc_keyが含まれているキャッシュを削除する
 					if( strpos( $cacheList['key'], $sbs_apc_key ) !== false ){
@@ -452,18 +447,25 @@ class SBS_SocialCountCache {
 
 	/**
 	 * SNSのオンオフ用のバリデーション関数
-	 * 後にRSSフィードの種類も追加
-	 * intval()で数値に変換。誤った値が入ると0になる
+	 * 後にRSSフィードのURLも追加
+	 * 数字はintval()で数値に変換。誤った値が入ると0になる
 	 *
-	 * @param	int		1か0、もしくはRSS,RSS2,Atom
+	 * @param	int		1か0、もしくはURL用の文字列
+	 * @return	arr		返り値は1か0、もしくはURLかエラーメッセージ
 	 */
 	function active_sns_validation( $input ) {
 
 		foreach( $input as $key => $val ){
 
-			if( $input[$key] == 'RSS' || $input[$key] == 'RSS2' || $input[$key] == 'Atom' ){
-				$input[$key] = $input[$key];
-			} else {
+			if ( $key == "rss_url" && empty( $input["rss_url"] ) ) {
+			    $input = $input;
+			} elseif ( $key == "rss_url" && filter_var( $val, FILTER_VALIDATE_URL ) && preg_match( '@^https?+://@i', $val ) ) {
+			    $input = $input;
+			} elseif ( $key == "rss_url" ) {
+				$input[$key] = "url_error";
+			}
+
+			if ( $key == "twitter" || $key == "facebook" || $key == "google" || $key == "hatena" || $key == "pocket" || $key == "feedly" ){
 				$input[$key] = intval( $input[$key] );
 			}
 		}
@@ -674,16 +676,15 @@ class SBS_SocialCountCache {
 	 */
 	public function get_feedly(){
 
-		// 設定したRSSフィードの種類を指定
-		if ( $this->sbs_active_sns['rss_type'] == 'RSS' ) {
-			$feed_url = rawurlencode( get_bloginfo( 'rss_url' ) );
-		} elseif( $this->sbs_active_sns['rss_type'] == 'RSS2' ) {
+		// デフォルトはRSS2、設定でユーザーの入力値がある場合は、そのフィードをカウントする
+		if ( $this->sbs_active_sns["rss_url"] == "" ) {
 			$feed_url = rawurlencode( get_bloginfo( 'rss2_url' ) );
 		} else {
-			$feed_url = rawurlencode( get_bloginfo( 'atom_url' ) );
+			$feed_url = rawurlencode( $this->sbs_active_sns["rss_url"] );
 		}
 
 		$result = wp_remote_get( 'http://cloud.feedly.com/v3/feeds/feed%2F' . $feed_url );
+
 		$array = json_decode( $result["body"], true );
 
 		if ( !is_wp_error( $result ) && $result["response"]["code"] === 200 ) {
@@ -701,6 +702,212 @@ class SBS_SocialCountCache {
 
 
 
+	/**
+	 * カウントを取得してデータベースに保存し、カウントを返す
+	 * 一つだけを呼び出した場合でもオプションページで設定したものは全部取得する
+	 * @param	int			投稿のID
+	 * @param	str			投稿のURL
+	 * @param	str			取得するsnsの指定
+	 * @return	int|arr		返り値は$active_snsで指定したSNSのカウント
+	 */
+	function add_cache( $postid, $url, $active_sns = null ) {
+
+		global $wpdb;
+
+		// テーブルの接頭辞と名前を指定
+		$table_name = $wpdb->prefix . "socal_count_cache";
+
+		$socials = array();
+
+		if( !empty( $this->sbs_active_sns['twitter'] ) ) {
+			$socials['twitter'] = $this->get_twitter($url);
+		} else {
+			$socials['twitter'] = 0;
+		}
+
+		if( !empty( $this->sbs_active_sns['facebook'] ) ) {
+			$socials['facebook'] = $this->get_facebook($url);
+		} else {
+			$socials['facebook'] = 0;
+		}
+
+		if( !empty( $this->sbs_active_sns['google'] ) ) {
+			$socials['google'] = $this->get_google($url);
+		} else {
+			$socials['google'] = 0;
+		}
+
+		if( !empty( $this->sbs_active_sns['hatena'] ) ) {
+			$socials['hatena'] = $this->get_hatena($url);
+		} else {
+			$socials['hatena'] = 0;
+		}
+
+		if( !empty( $this->sbs_active_sns['pocket'] ) ) {
+			$socials['pocket'] = $this->get_pocket($url);
+		} else {
+			$socials['pocket'] = 0;
+		}
+
+		if( !empty( $this->sbs_active_sns['feedly'] ) ) {
+			$socials['feedly'] = $this->get_feedly();
+		} else {
+			$socials['feedly'] = 0;
+		}
+
+		$socials['all'] = $socials['twitter'] + $socials['facebook'] + $socials['google'] + $socials['hatena'] + $socials['pocket'];
+
+		$now = current_time('mysql'); // ブログ時間を取得するWordPressの関数。（YYYY-MM-DD HH:MM:SS）
+
+		// 取得したカウントを日時とともにデータベースへ書き込み
+		// ON DUPLICATE KEY UPDATEでプライマリキーのpostidをフラグに無ければINSERT、あればUPDATE
+		// $nowのプレースホルダーを''で囲むの忘れずに
+		$result2 = $wpdb->query( $wpdb->prepare(
+			"INSERT INTO {$table_name}
+			(postid, day, all_count, twitter_count, facebook_count, google_count, hatena_count, pocket_count, feedly_count)
+			VALUES (%d, %s, %d, %d, %d, %d, %d, %d, %d)
+			ON DUPLICATE KEY UPDATE day = '%2\$s',
+			all_count = %3\$d,
+			twitter_count = %4\$d,
+			facebook_count = %5\$d,
+			google_count = %6\$d,
+			hatena_count = %7\$d,
+			pocket_count = %8\$d,
+			feedly_count = %9\$d",
+			$postid,
+			$now,
+			$socials['all'],
+			$socials['twitter'],
+			$socials['facebook'],
+			$socials['google'],
+			$socials['hatena'],
+			$socials['pocket'],
+			$socials['feedly']
+		));
+
+		// 値を返すSNSを引数から指定
+		// 出力用に整形
+		if( $active_sns == "all" ) {
+			$socials['all'] = $socials['all'];
+			$socials['twitter'] = $socials['twitter'];
+			$socials['facebook'] = $socials['facebook'];
+			$socials['google'] = $socials['google'];
+			$socials['hatena'] = $socials['hatena'];
+			$socials['pocket'] = $socials['pocket'];
+			$socials['feedly'] = $socials['feedly'];
+		} elseif ( $active_sns == "twitter" ) {
+			$socials = $socials['twitter'];
+		} elseif ( $active_sns == "facebook" ) {
+			$socials = $socials['facebook'];
+		} elseif ( $active_sns == "google" ) {
+			$socials = $socials['google'];
+		} elseif ( $active_sns == "hatena" ) {
+			$socials = $socials['hatena'];
+		} elseif ( $active_sns == "pocket" ) {
+			$socials = $socials['pocket'];
+		} elseif ( $active_sns == "feedly" ) {
+			$socials = $socials['feedly'];
+		}
+
+		return $socials;
+	}
+
+
+
+
+	/**
+	 * データベースもしくはAPCから取得したキャッシュの値を元にカウントを返す
+	 * @param	arr			キャッシュしたデータベースの値
+	 * @param	str			取得するsnsの指定
+	 * @return	int|arr		返り値は$active_snsで指定したSNSのカウント
+	 */
+	function get_cache( $result, $active_sns = null ) {
+
+		// 値を返すSNSを引数から指定
+		// オプションで無効なSNSはデータベースに値があっても0を返す
+		// 有効期限内なのでデータベースの値をそのまま渡す
+		if ( $active_sns == "all") {
+			$socials = array();
+
+			if( !empty( $this->sbs_active_sns['twitter'] ) ) { // !付きemptyなので0の場合もfalse
+				$socials['twitter'] = $result->twitter_count;
+			} else {
+				$socials['twitter'] = 0;
+			}
+
+			if( !empty( $this->sbs_active_sns['facebook'] ) ) {
+				$socials['facebook'] = $result->facebook_count;
+			} else {
+				$socials['facebook'] = 0;
+			}
+
+			if( !empty( $this->sbs_active_sns['google'] ) ) {
+				$socials['google'] = $result->google_count;
+			} else {
+				$socials['google'] = 0;
+			}
+
+			if( !empty( $this->sbs_active_sns['hatena'] ) ) {
+				$socials['hatena'] = $result->hatena_count;
+			} else {
+				$socials['hatena'] = 0;
+			}
+
+			if( !empty( $this->sbs_active_sns['pocket'] ) ) {
+				$socials['pocket'] = $result->pocket_count;
+			} else {
+				$socials['pocket'] = 0;
+			}
+
+			if( !empty( $this->sbs_active_sns['feedly'] ) ) {
+				$socials['feedly'] = $result->feedly_count;
+			} else {
+				$socials['feedly'] = 0;
+			}
+
+		$socials['all'] = $socials['twitter'] + $socials['facebook'] + $socials['google'] + $socials['hatena'] + $socials['pocket'];
+
+		} elseif ( $active_sns == 'twitter' ) {
+			if( !empty( $this->sbs_active_sns['twitter'] ) ) {
+				$socials = $result->twitter_count;
+			} else {
+				$socials = 0;
+			}
+		} elseif ( $active_sns == 'facebook' ) {
+			if( !empty( $this->sbs_active_sns['facebook'] ) ) {
+				$socials = $result->facebook_count;
+			} else {
+				$socials = 0;
+			}
+		} elseif ( $active_sns == 'google' ) {
+			if( !empty( $this->sbs_active_sns['google'] ) ) {
+				$socials = $result->google_count;
+			} else {
+				$socials = 0;
+			}
+		} elseif ( $active_sns == 'hatena' ) {
+			if( !empty( $this->sbs_active_sns['hatena'] ) ) {
+				$socials = $result->hatena_count;
+			} else {
+				$socials = 0;
+			}
+		} elseif ( $active_sns == 'pocket' ) {
+			if( !empty( $this->sbs_active_sns['pocket'] ) ) {
+				$socials = $result->pocket_count;
+			} else {
+				$socials = 0;
+			}
+		} elseif ( $active_sns == 'feedly' ) {
+			if( !empty( $this->sbs_active_sns['feedly'] ) ) {
+				$socials = $result->feedly_count;
+			} else {
+				$socials = 0;
+			}
+		}
+
+		return $socials;
+	}
+
 } // end class
 
 } // if class
@@ -709,7 +916,7 @@ class SBS_SocialCountCache {
 
 
 // インスタンスの作成（コンストラクタの実行）
-$obj = new SBS_SocialCountCache();
+$SBS_SocialCountCache = new SBS_SocialCountCache();
 
 
 
@@ -738,18 +945,18 @@ function sbs_get_socal_count( $active_sns = null ) {
 	$sbs_active_sns = $sbs->sbs_active_sns;
 	$sbs_cache_time = $sbs->sbs_cache_time;
 
+	// テーブルの接頭辞と名前を指定
+	$table_name = $wpdb->prefix . "socal_count_cache";
 
 	// 投稿のIDとURLを取得する
 	$postid = get_the_ID();
 	$url = get_permalink( $postid );
-
 
 /*
 	// test用
 	$postid = 105;
 	$url = "http://oxynotes.com/?p=2933";
 */
-
 
 
 
@@ -770,7 +977,7 @@ function sbs_get_socal_count( $active_sns = null ) {
 	*/
 
 	$pfx_date = get_the_modified_time('U'); // 投稿の最終更新日時取得
-	$current_time = current_time('timestamp'); // ブログのローカルタイム取得 これも+9時間されるちょっと意味わからん
+	$current_time = current_time('timestamp'); // ブログのローカルタイム取得
 	$day = $current_time - (1 * 24 * 60 * 60); // ブログのローカルタイムから1日前のUNIXタイムを取得
 	$week = $day - (6 * 24 * 60 * 60); // 1週間
 
@@ -789,24 +996,24 @@ function sbs_get_socal_count( $active_sns = null ) {
 		// var_dump("最終更新日が1週間以上"); // テスト用
 	}
 
+
+
+
 	// 対応する投稿IDのキャッシュをデータベースから取得する
 	// acpが有効な場合はapcにデータを保存して再利用する
-	$table_name = $wpdb->prefix . "socal_count_cache";
-
+	$query = "SELECT day,twitter_count,facebook_count,google_count,hatena_count,pocket_count,feedly_count FROM {$table_name} WHERE postid = {$postid}";
 	if ( function_exists( 'apc_store' ) && ini_get( 'apc.enabled' ) ) { // apcモジュール読み込まれており、更に有効かどうか調べる
-		$sbs_apc_key = "sbs_db_cache_" . md5( __FILE__ ); // md5で一意性確保
+		$sbs_apc_key = "sbs_db_cache_" . md5( __FILE__ ) . $postid; // md5で一意性確保
 		// var_dump("apc有効");
-		if ( apc_fetch( $sbs_apc_key . $postid ) ) { // キャッシュがある場合
-			$result = apc_fetch( $sbs_apc_key . $postid );
+		if ( apc_fetch( $sbs_apc_key ) ) { // キャッシュがある場合
+			$result = apc_fetch( $sbs_apc_key );
 			// var_dump("apcキャッシュ見つかった");
 		} else { // キャッシュがない場合（データベースのキャッシュを取得）
-			$query = "SELECT day,twitter_count,facebook_count,google_count,hatena_count,pocket_count,feedly_count FROM {$table_name} WHERE postid = {$postid}";
-			$result = $wpdb->get_row($query);
-			apc_store( $sbs_apc_key . $postid, $result, strtotime($result->day) - $exp_time); // APCの有効期限は、キャッシュ作成日-有効期限で算出。期限切れの場合はマイナスになるがAPCでは問題ないようだ
+			$result = $wpdb->get_row( $query );
+			apc_store( $sbs_apc_key, $result, strtotime($result->day) - $exp_time); // APCの有効期限は、キャッシュ作成日-有効期限で算出。期限切れの場合はマイナスになるがAPCでは問題ないようだ
 			// var_dump("apcキャッシュ見つからない");
 		}
 	} else {
-		$query = "SELECT day,twitter_count,facebook_count,google_count,hatena_count,pocket_count,feedly_count FROM {$table_name} WHERE postid = {$postid}";
 		$result = $wpdb->get_row($query);
 		// var_dump("apc無効");
 	}
@@ -823,182 +1030,13 @@ function sbs_get_socal_count( $active_sns = null ) {
 	if ( strtotime($result->day) > $exp_time ) {
 
 		// var_dump("キャッシュが有効期限内"); // テスト用
-
-		// 値を返すSNSを引数から指定
-		// オプションで無効なSNSはデータベースに値があっても0を返す
-		// 有効期限内なのでデータベースの値をそのまま渡す
-		if ( $active_sns == "all") {
-			$socials = array();
-
-			if( !empty( $sbs_active_sns['twitter'] ) ) { // !付きemptyなので0の場合もfalse
-				$socials['twitter'] = $result->twitter_count;
-			} else {
-				$socials['twitter'] = 0;
-			}
-
-			if( !empty( $sbs_active_sns['facebook'] ) ) {
-				$socials['facebook'] = $result->facebook_count;
-			} else {
-				$socials['facebook'] = 0;
-			}
-
-			if( !empty( $sbs_active_sns['google'] ) ) {
-				$socials['google'] = $result->google_count;
-			} else {
-				$socials['google'] = 0;
-			}
-
-			if( !empty( $sbs_active_sns['hatena'] ) ) {
-				$socials['hatena'] = $result->hatena_count;
-			} else {
-				$socials['hatena'] = 0;
-			}
-
-			if( !empty( $sbs_active_sns['pocket'] ) ) {
-				$socials['pocket'] = $result->pocket_count;
-			} else {
-				$socials['pocket'] = 0;
-			}
-
-			if( !empty( $sbs_active_sns['feedly'] ) ) {
-				$socials['feedly'] = $result->feedly_count;
-			} else {
-				$socials['feedly'] = 0;
-			}
-		} elseif ( $active_sns == 'twitter' ) {
-			if( !empty( $sbs_active_sns['twitter'] ) ) {
-				$socials = $result->twitter_count;
-			} else {
-				$socials = 0;
-			}
-		} elseif ( $active_sns == 'facebook' ) {
-			if( !empty( $sbs_active_sns['facebook'] ) ) {
-				$socials = $result->facebook_count;
-			} else {
-				$socials = 0;
-			}
-		} elseif ( $active_sns == 'google' ) {
-			if( !empty( $sbs_active_sns['google'] ) ) {
-				$socials = $result->google_count;
-			} else {
-				$socials = 0;
-			}
-		} elseif ( $active_sns == 'hatena' ) {
-			if( !empty( $sbs_active_sns['hatena'] ) ) {
-				$socials = $result->hatena_count;
-			} else {
-				$socials = 0;
-			}
-		} elseif ( $active_sns == 'pocket' ) {
-			if( !empty( $sbs_active_sns['pocket'] ) ) {
-				$socials = $result->pocket_count;
-			} else {
-				$socials = 0;
-			}
-		} elseif ( $active_sns == 'feedly' ) {
-			if( !empty( $sbs_active_sns['feedly'] ) ) {
-				$socials = $result->feedly_count;
-			} else {
-				$socials = 0;
-			}
-		}
-
-		return $socials;
+		return $sbs->get_cache( $result, $active_sns );
 
 	} else { // 有効期限切れの場合
 
 		// var_dump("キャッシュが有効期限切れ"); // テスト用
+		return $sbs->add_cache( $postid, $url, $active_sns );
 
-		// URLからカウントを取得する
-		// 一つだけを呼び出した場合でもオプションページで設定したものは全部取得する
-		$socials = array();
-
-		if( !empty( $sbs_active_sns['twitter'] ) ) {
-			$socials['twitter'] = $sbs->get_twitter($url);
-		} else {
-			$socials['twitter'] = 0;
-		}
-
-		if( !empty( $sbs_active_sns['facebook'] ) ) {
-			$socials['facebook'] = $sbs->get_facebook($url);
-		} else {
-			$socials['facebook'] = 0;
-		}
-
-		if( !empty( $sbs_active_sns['google'] ) ) {
-			$socials['google'] = $sbs->get_google($url);
-		} else {
-			$socials['google'] = 0;
-		}
-
-		if( !empty( $sbs_active_sns['hatena'] ) ) {
-			$socials['hatena'] = $sbs->get_hatena($url);
-		} else {
-			$socials['hatena'] = 0;
-		}
-
-		if( !empty( $sbs_active_sns['pocket'] ) ) {
-			$socials['pocket'] = $sbs->get_pocket($url);
-		} else {
-			$socials['pocket'] = 0;
-		}
-
-		if( !empty( $sbs_active_sns['feedly'] ) ) {
-			$socials['feedly'] = $sbs->get_feedly();
-		} else {
-			$socials['feedly'] = 0;
-		}
-
-		$now = current_time('mysql'); // ブログ時間を取得するWordPressの関数。（YYYY-MM-DD HH:MM:SS）
-
-		// 取得したカウントを日時とともにデータベースへ書き込み
-		// ON DUPLICATE KEY UPDATEでプライマリキーのpostidをフラグに無ければINSERT、あればUPDATE
-		// $nowのプレースホルダーを''で囲むの忘れずに
-		$result2 = $wpdb->query( $wpdb->prepare(
-			"INSERT INTO {$table_name}
-			(postid, day, twitter_count, facebook_count, google_count, hatena_count, pocket_count, feedly_count)
-			VALUES (%d, %s, %d, %d, %d, %d, %d, %d)
-			ON DUPLICATE KEY UPDATE day = '%2\$s',
-			twitter_count = %3\$d,
-			facebook_count = %4\$d,
-			google_count = %5\$d,
-			hatena_count = %6\$d,
-			pocket_count = %7\$d,
-			feedly_count = %8\$d",
-			$postid,
-			$now,
-			$socials['twitter'],
-			$socials['facebook'],
-			$socials['google'],
-			$socials['hatena'],
-			$socials['pocket'],
-			$socials['feedly']
-		));
-
-		// 値を返すSNSを引数から指定
-		// 出力用に整形
-		if( $active_sns == "all" ) {
-			$socials['twitter'] = $socials['twitter'];
-			$socials['facebook'] = $socials['facebook'];
-			$socials['google'] = $socials['google'];
-			$socials['hatena'] = $socials['hatena'];
-			$socials['pocket'] = $socials['pocket'];
-			$socials['feedly'] = $socials['feedly'];
-		} elseif ( $active_sns == "twitter" ) {
-			$socials = $socials['twitter'];
-		} elseif ( $active_sns == "facebook" ) {
-			$socials = $socials['facebook'];
-		} elseif ( $active_sns == "google" ) {
-			$socials = $socials['google'];
-		} elseif ( $active_sns == "hatena" ) {
-			$socials = $socials['hatena'];
-		} elseif ( $active_sns == "pocket" ) {
-			$socials = $socials['pocket'];
-		} elseif ( $active_sns == "feedly" ) {
-			$socials = $socials['feedly'];
-		}
-
-		return $socials;
 	}
 }
 
@@ -1075,5 +1113,196 @@ function sbs_get_feedly() {
 
 
 
+/**
+ * カウントの多い投稿のIDを返す
+ * 
+ * @global	wpdb
+ * @param	str			取得するsnsの指定
+ * @param	int			取得する投稿の数
+ * @param	str			取得する投稿のポストタイプ
+ * @return	array		投稿のID
+ */
+function sbs_get_popular_post( $active_sns, $page, $post_type ) {
+
+	global $wpdb;
+
+	// postsテーブルのIDと、socal_count_cacheテーブルのpostidでINNER JOIN
+	// 指定したSNSとポストタイプの値を取得
+	$posts_table_name = $wpdb->prefix . "posts";
+	$scc_table_name = $wpdb->prefix . "socal_count_cache";
+	$query = "
+		SELECT
+			{$posts_table_name}.ID,
+			{$posts_table_name}.post_type,
+			{$posts_table_name}.post_status,
+			{$scc_table_name}.all_count,
+			{$scc_table_name}.twitter_count,
+			{$scc_table_name}.facebook_count,
+			{$scc_table_name}.google_count,
+			{$scc_table_name}.hatena_count,
+			{$scc_table_name}.pocket_count,
+			{$scc_table_name}.feedly_count
+		FROM
+			{$posts_table_name}
+		INNER JOIN
+			{$scc_table_name}
+		ON
+			{$posts_table_name}.ID = {$scc_table_name}.postid
+		WHERE
+			post_type = '{$post_type}'
+		ORDER BY
+			{$active_sns}
+		DESC LIMIT
+			{$page}
+		";
+
+	if ( function_exists( 'apc_store' ) && ini_get( 'apc.enabled' ) ) { // apcモジュール読み込まれており、更に有効かどうか調べる
+		$sbs_apc_key = "sbs_db_cache_" . md5( __FILE__ ) . $postid . $active_sns . $post_type; // md5で一意性確保
+		// var_dump("apc有効");
+		if ( apc_fetch( $sbs_apc_key ) ) { // キャッシュがある場合
+			$result = apc_fetch( $sbs_apc_key );
+			// var_dump("apcキャッシュ見つかった");
+		} else { // キャッシュがない場合（データベースのキャッシュを取得）
+			$result = $wpdb->get_results( $query );
+			apc_store( $sbs_apc_key , $result, 300 ); // APCの有効期限は5分
+			// var_dump("apcキャッシュ見つからない");
+		}
+	} else {
+		$result = $wpdb->get_results( $query );
+		// var_dump("apc無効");
+	}
+
+	if( isset( $result ) ){ 	
+		$result_arr = json_decode(json_encode($result), true);
+
+		foreach( $result_arr as $results ){
+			foreach( $results as $key => $value){
+				if( $key == "ID" ) $ids[] = $value;
+			}
+		}
+	}
+
+	return $ids;
+}
 
 
+
+
+/**
+ * Template tag - 全てのカウントの合計が多い順に記事のIDを返す
+ * 
+ * @param	int			取得する投稿の数
+ * @param	str			取得するポストタイプ
+ */
+function sbs_get_pp_all( $page = 10, $post_type = "post" ) {
+
+	// 一応数列にキャストしてバリデーション
+	$page = intval( $page );
+
+	// 一応ポストタイプが存在するかバリデーション
+	if ( ! post_type_exists( $post_type ) ) { 
+		return "エラー：誤った引数";
+	}
+
+	return sbs_get_popular_post( 'all_count', $page, $post_type );
+}
+
+
+
+
+/**
+ * Template tag - twitterのカウントが多い順に記事のIDを返す
+ * 
+ * @param	int			取得する投稿の数
+ * @param	str			取得するポストタイプ
+ */
+function sbs_get_pp_twitter( $page = 10, $post_type = "post" ) {
+
+	$page = intval( $page );
+
+	if ( ! post_type_exists( $post_type ) ) { 
+		return "エラー：誤った引数";
+	}
+
+	return sbs_get_popular_post( 'twitter_count', $page, $post_type );
+}
+
+
+
+
+/**
+ * Template tag - facebookのカウントが多い順に記事のIDを返す
+ * 
+ * @param	int			取得する投稿の数
+ * @param	str			取得するポストタイプ
+ */
+function sbs_get_pp_facebook( $page = 10, $post_type = "post" ) {
+
+	$page = intval( $page );
+
+	if ( ! post_type_exists( $post_type ) ) { 
+		return "エラー：誤った引数";
+	}
+
+	return sbs_get_popular_post( 'facebook_count', $page, $post_type );
+}
+
+
+
+
+/**
+ * Template tag - googleのカウントが多い順に記事のIDを返す
+ * 
+ * @param	int			取得する投稿の数
+ * @param	str			取得するポストタイプ
+ */
+function sbs_get_pp_google( $page = 10, $post_type = "post" ) {
+
+	$page = intval( $page );
+
+	if ( ! post_type_exists( $post_type ) ) { 
+		return "エラー：誤った引数";
+	}
+
+	return sbs_get_popular_post( 'google_count', $page, $post_type );
+}
+
+
+
+
+/**
+ * Template tag - hatenaのカウントが多い順に記事のIDを返す
+ * 
+ * @param	int			取得する投稿の数
+ * @param	str			取得するポストタイプ
+ */
+function sbs_get_pp_hatena( $page = 10, $post_type = "post" ) {
+
+	$page = intval( $page );
+
+	if ( ! post_type_exists( $post_type ) ) { 
+		return "エラー：誤った引数";
+	}
+
+	return sbs_get_popular_post( 'hatena_count', $page, $post_type );
+}
+
+
+
+
+/**
+ * Template tag - pocketのカウントが多い順に記事のIDを返す
+ * 
+ * @param	int			取得する投稿の数
+ * @param	str			取得するポストタイプ
+ */
+function sbs_get_pp_pocket( $page = 10, $post_type = "post" ) {
+
+	$page = intval( $page );
+
+	if ( ! post_type_exists( $post_type ) ) { 
+		return "エラー：誤った引数";
+	}
+
+	return sbs_get_popular_post( 'pocket_count', $page, $post_type );
+}

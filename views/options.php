@@ -16,7 +16,9 @@ if( empty( $this->sbs_facebook_app_token ) ) { // FacebookのApp Tokenが設定�
 	);
 	settings_errors('app-token-empty'); // 引数でエラーのスラッグを指定するとエラーを限定できる
 
-} elseif( $this->sbs_facebook_app_token == "validation_error" ) {
+}
+
+if( $this->sbs_facebook_app_token == "validation_error" ) {
 
 	// 不正な入力値が入っていた場合のエラーメッセージ
 	add_settings_error(
@@ -29,6 +31,18 @@ if( empty( $this->sbs_facebook_app_token ) ) { // FacebookのApp Tokenが設定�
 	settings_errors('app-token-validation_error');
 }
 
+
+if( $this->sbs_active_sns[rss_url] == "url_error" ) {
+
+	// 不正な入力値が入っていた場合のエラーメッセージ
+	add_settings_error(
+	    'rss-url-validation_error',
+	    'rss-url-validation_error',
+	    __('RSSのURLが誤っています。URLスキーム（http）から入力してください。', 'sbs_social_count_cache'), 
+	    'error'
+	);
+	settings_errors('rss-url-validation_error');
+}
 
 ?>
 
@@ -57,22 +71,18 @@ if( empty( $this->sbs_facebook_app_token ) ) { // FacebookのApp Tokenが設定�
 
 <hr>
 
-<h3><?php _e('FeedlyでカウントするRSSフィードの種類', 'sbs_social_count_cache'); ?></h3>
+<h3><?php _e('FeedlyでカウントするRSSのURL', 'sbs_social_count_cache'); ?></h3>
+
+<p><?php _e('カスタムのフィードを使用している場合はこちらでURLを入力してください。デフォルトはWordPressで自動的に生成されるRSS2のフィードを使用します。', 'sbs_social_count_cache'); ?></p>
 
 <table class="form-table">
 	<tbody>
 	<tr>
-		<th><label><?php _e('RSSフィードの種類', 'sbs_social_count_cache'); ?></label></th>
+		<th><label><?php _e('RSSフィードのURL', 'sbs_social_count_cache'); ?></label></th>
 		<td>
 		<fieldset>
 			<label>
-				<input name="sbs_active_sns[rss_type]" type="radio" id="RSS" value="RSS" <?php if( $this->sbs_active_sns['rss_type'] == "RSS" ){ echo 'checked="checked"'; } ?>>RSS</input>
-			</label><br>
-			<label>
-				<input name="sbs_active_sns[rss_type]" type="radio" id="RSS" value="RSS2" <?php if( $this->sbs_active_sns['rss_type'] == "RSS2" ){ echo 'checked="checked"'; } ?>>RSS2</input>
-			</label><br>
-			<label>
-				<input name="sbs_active_sns[rss_type]" type="radio" id="RSS" value="Atom" <?php if( $this->sbs_active_sns['rss_type'] == "Atom" ){ echo 'checked="checked"'; } ?>>Atom</input>
+				<input type="text" name="sbs_active_sns[rss_url]" value="<?php if(isset($this->sbs_active_sns["rss_url"])) echo esc_html( $this->sbs_active_sns["rss_url"] ); ?>" size="45">
 			</label>
 		</fieldset>
 		</td>
@@ -188,6 +198,30 @@ if( empty( $this->sbs_facebook_app_token ) ) { // FacebookのApp Tokenが設定�
 			</select>
 		</td>
 	</tr>
+	</tbody>
+</table>
+
+<hr>
+
+<h3><?php _e('キャッシュのプリロード', 'sbs_social_count_cache'); ?></h3>
+
+<p><?php _e('チェックするとバックグラウンドで全ページのキャッシュを取得します。（通常はページにアクセス時にキャッシュを保存します。）', 'sbs_social_count_cache'); ?></p>
+
+<?php if( wp_next_scheduled( 'sbs_preload_cron' ) ) { echo '<span style="color: red;">現在キャッシュのプリロード中です。</span>'; } ?>
+
+<table class="form-table">
+	<tbody>
+	<tr>
+		<th><label><?php _e('プリロード', 'sbs_social_count_cache'); ?></label></th>
+		<td>
+		<fieldset>
+			<label for="preload">
+			<input type="hidden" name="sbs_preload" value="0">
+			<input name="sbs_preload" id="preload" type="checkbox" value="1"<?php if( wp_next_scheduled( 'sbs_preload_cron' ) ) { echo ' disabled="disabled"'; } ?>>有効にする</input>
+			</label>
+		</fieldset>
+		</td>
+		</tr>
 	</tbody>
 </table>
 
